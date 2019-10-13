@@ -28,11 +28,11 @@ impl Object {
         }
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&self, dir: &Path) -> Result<()> {
         let hash = hex::encode(&self.digest);
-        let dirname = Path::new(".git/objects").join(&hash[..2]);
+        let dirname = dir.join(".git/objects").join(&hash[..2]);
         let filename = &hash[2..];
-        if ! (std::path::Path::new(&dirname).is_dir()) {
+        if ! (dirname.is_dir()) {
             std::fs::create_dir(&dirname)?;
         }
         std::fs::write(dirname.join(&filename), &self.data)?;
@@ -76,24 +76,45 @@ mod tests {
 
     fn setup() -> Result<TempDir> {
         let tempdir = TempDir::new("")?;
-        std::env::set_current_dir(tempdir.path())?;
-        std::fs::create_dir_all(".git/objects")?;
+        std::fs::create_dir_all(tempdir.path().join(".git/objects"))?;
         return Ok(tempdir)
     }
 
-    fn assert_stored(data: &[u8]) {
-        let hash = hex::encode(hash_data(&data));
+    fn assert_stored_in_path(data: &[u8], path: &Path, dir: &Path) {
+        let store_path = dir.join(".git/objects").join(path);
         assert_eq!(data,
-            std::fs::read(Path::new(".git/objects").join(&hash[..2]).join(&hash[2..])).unwrap().as_slice());
+                   std::fs::read(store_path).unwrap().as_slice());
+    }
+
+    fn assert_stored_hash(data: &[u8], hash: &str, dir: &Path) {
+        assert_stored_in_path(&data, &Path::new(&hash[..2]).join(&hash[2..]), dir)
+    }
+
+    fn assert_stored(data: &[u8], dir: &Path) {
+        assert_stored_hash(&data, hex::encode(hash_data(&data)).as_str(), dir);
     }
 
     #[test]
     fn test_save() {
-        let _tempdir = setup().unwrap();
+        let tempdir = setup().unwrap();
         let data: Vec<u8> = vec!(1, 2, 3);
         let object = Object::from_data(data.as_slice());
-        object.save().unwrap();
-        assert_stored(data.as_slice());
+        object.save(tempdir.path()).unwrap();
+        assert_stored(data.as_slice(), tempdir.path());
+    }
+
+    #[test]
+    fn test_same_store_dir() {
+        let tempdir = setup().unwrap();
+        let data: Vec<u8> = vec!(1, 2, 3);
+        let mut other_data = data.clone();
+        other_data.reverse();
+        let other_digest = [0x70; 20];
+        let object = Object::from_data(data.as_slice());
+        object.save(tempdir.path()).unwrap();
+        Object { data: other_data.clone(), digest: other_digest }.save(tempdir.path()).unwrap();
+        assert_stored(data.as_slice(), tempdir.path());
+        assert_stored_hash(other_data.as_slice(), hex::encode(other_digest).as_str(), tempdir.path())
     }
 }
 
