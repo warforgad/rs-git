@@ -1,8 +1,6 @@
 extern crate hex;
 
-use std::fs::File;
 use std::path::Path;
-use std::io::{Read, Write};
 use std::error::Error;
 use crypto::sha1::Sha1;
 use crypto::digest::Digest;
@@ -22,6 +20,7 @@ impl Object {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_data(data: &[u8]) -> Object {
         Object {
             data: data.to_vec(),
@@ -36,8 +35,7 @@ impl Object {
         if ! (std::path::Path::new(&dirname).is_dir()) {
             std::fs::create_dir(&dirname)?;
         }
-        let mut file = File::create(dirname.join(&filename))?;
-        file.write_all(&self.data)?;
+        std::fs::write(dirname.join(&filename), &self.data)?;
         Ok(())
     }
 }
@@ -52,10 +50,7 @@ pub struct Blob {
 
 impl Blob {
     pub fn from_file(path: &str) -> Result<Blob> {
-        let mut file = File::open(path)?;
-        let mut data: Vec<u8> = Vec::new();
-        file.read_to_end(&mut data)?;
-        Ok(Blob { data })
+        Ok(Blob { data: std::fs::read(path)? })
     }
 }
 
