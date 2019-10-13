@@ -7,3 +7,6 @@ edition = "2018"
 [dependencies]
 hex = "0.4.0"
 rust-crypto = "0.2.36"
+
+[dev-dependencies]
+tempdir = "0.3.7"

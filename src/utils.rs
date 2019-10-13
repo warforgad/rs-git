@@ -22,6 +22,13 @@ impl Object {
         }
     }
 
+    pub fn from_data(data: &[u8]) -> Object {
+        Object {
+            data: data.to_vec(),
+            digest: hash_data(&data)
+        }
+    }
+
     pub fn save(&self) -> Result<()> {
         let hash = hex::encode(&self.digest);
         let dirname = Path::new(".git/objects").join(&hash[..2]);
@@ -52,13 +59,46 @@ impl Blob {
     }
 }
 
+fn hash_data(data: &[u8]) -> [u8;20] {
+    let mut digest: [u8; 20] = [0; 20];
+    let mut hasher = Sha1::new();
+    hasher.input(&data);
+    hasher.result(&mut digest);
+    return digest;
+}
+
 impl Hashable for Blob {
     fn hash(&self) -> [u8; 20] {
-        let mut digest: [u8; 20] = [0; 20];
-        let mut hasher = Sha1::new();
-        hasher.input(&self.data);
-        hasher.result(&mut digest);
-        return digest;
+        hash_data(&self.data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate tempdir;
+    use super::*;
+    use self::tempdir::TempDir;
+
+    fn setup() -> Result<TempDir> {
+        let tempdir = TempDir::new("")?;
+        std::env::set_current_dir(tempdir.path())?;
+        std::fs::create_dir_all(".git/objects")?;
+        return Ok(tempdir)
+    }
+
+    fn assert_stored(data: &[u8]) {
+        let hash = hex::encode(hash_data(&data));
+        assert_eq!(data,
+            std::fs::read(Path::new(".git/objects").join(&hash[..2]).join(&hash[2..])).unwrap().as_slice());
+    }
+
+    #[test]
+    fn test_save() {
+        let _tempdir = setup().unwrap();
+        let data: Vec<u8> = vec!(1, 2, 3);
+        let object = Object::from_data(data.as_slice());
+        object.save().unwrap();
+        assert_stored(data.as_slice());
     }
 }
 
