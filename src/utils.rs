@@ -8,40 +8,28 @@ use crypto::digest::Digest;
 type Result<T> = std::result::Result<T, Box<Error>>;
 
 pub struct Object {
-    digest: [u8; 20],
     data: Vec<u8>,
 }
 
 impl Object {
-    pub fn from_blob(blob: &Blob) -> Object {
-        Object {
-            data: blob.data.clone(),
-            digest: blob.hash()
-        }
-    }
-
     #[allow(dead_code)]
     pub fn from_data(data: &[u8]) -> Object {
         Object {
             data: data.to_vec(),
-            digest: hash_data(&data)
         }
+    }
+
+    pub fn save_into(data: &[u8], path: &Path) -> Result<()> {
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        std::fs::write(path, &data)?;
+        Ok(())
     }
 
     pub fn save(&self, dir: &Path) -> Result<()> {
-        let hash = hex::encode(&self.digest);
-        let dirname = dir.join(".git/objects").join(&hash[..2]);
-        let filename = &hash[2..];
-        if ! (dirname.is_dir()) {
-            std::fs::create_dir(&dirname)?;
-        }
-        std::fs::write(dirname.join(&filename), &self.data)?;
-        Ok(())
+        let hash = hex::encode(&hash_data(&self.data));
+        let path = dir.join(".git/objects").join(&hash[..2]).join(&hash[2..]);
+        return Object::save_into(&self.data, &path);
     }
-}
-
-pub trait Hashable {
-    fn hash(&self) -> [u8; 20];
 }
 
 pub struct Blob {
@@ -52,6 +40,12 @@ impl Blob {
     pub fn from_file(path: &str) -> Result<Blob> {
         Ok(Blob { data: std::fs::read(path)? })
     }
+
+    pub fn serialize(&self) -> Object {
+        let mut data = format!("blob {}", self.data.len()).into_bytes();
+        data.append(&mut self.data.clone());
+        Object{data}
+    }
 }
 
 fn hash_data(data: &[u8]) -> [u8;20] {
@@ -60,12 +54,6 @@ fn hash_data(data: &[u8]) -> [u8;20] {
     hasher.input(&data);
     hasher.result(&mut digest);
     return digest;
-}
-
-impl Hashable for Blob {
-    fn hash(&self) -> [u8; 20] {
-        hash_data(&self.data)
-    }
 }
 
 #[cfg(test)]
@@ -107,14 +95,11 @@ mod tests {
     fn test_same_store_dir() {
         let tempdir = setup().unwrap();
         let data: Vec<u8> = vec!(1, 2, 3);
-        let mut other_data = data.clone();
-        other_data.reverse();
-        let other_digest = [0x70; 20];
-        let object = Object::from_data(data.as_slice());
-        object.save(tempdir.path()).unwrap();
-        Object { data: other_data.clone(), digest: other_digest }.save(tempdir.path()).unwrap();
-        assert_stored(data.as_slice(), tempdir.path());
-        assert_stored_hash(other_data.as_slice(), hex::encode(other_digest).as_str(), tempdir.path())
+        let other_data: Vec<u8> = vec!(3, 2, 1);
+        Object::save_into(&data, &tempdir.path().join(".git/objects/00/0")).unwrap();
+        Object::save_into(&other_data, &tempdir.path().join(".git/objects/00/1")).unwrap();
+        assert_stored_hash(data.as_slice(), "000", tempdir.path());
+        assert_stored_hash(other_data.as_slice(), "001", tempdir.path());
     }
 }
 

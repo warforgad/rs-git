@@ -1,11 +1,11 @@
 mod utils;
 use std::error::Error;
 use std::path::Path;
-use crate::utils::{Blob, Object};
+use crate::utils::Blob;
 
 fn hash_file(path: &str) -> Result<(), Box<dyn Error>> {
-    let mut blob = Blob::from_file(&path)?;
-    let object = Object::from_blob(&mut blob);
+    let blob = Blob::from_file(&path)?;
+    let object = blob.serialize();
     object.save(&Path::new("."))?;
     Ok(())
 }
