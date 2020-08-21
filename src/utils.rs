@@ -22,16 +22,13 @@ fn generate_object_path(data: &[u8]) -> Result<PathBuf> {
 
 pub fn save_object(git_dir: &Path, object: &impl Serializable) -> Result<()> {
     let data = object.serialize();
-    let path = git_dir.join(".git/objects").join(generate_object_path(&data).unwrap());
-    let mut full_data = Vec::from(format!("{} {}\x00", object.get_name(), data.len()).as_bytes());
-    full_data.extend_from_slice(&data);
-    return save_into(full_data.as_slice(), &path);
+    let path = git_dir.join(".git/objects").join(generate_object_path(data.as_slice()).unwrap());
+    return save_into(data.as_slice(), &path);
 }
 
 pub trait Serializable
 {
-    fn serialize(&self) -> &[u8];
-    fn get_name(&self) -> String;
+    fn serialize(&self) -> Vec<u8>;
 }
 
 pub struct Blob {
@@ -43,14 +40,17 @@ impl Blob {
         Ok(Blob { data: std::fs::read(path)? })
     }
 
-    pub fn from_data(raw_data: &[u8]) -> Result<Blob> {Ok(Blob { data: Vec::from(raw_data)}) }
+    pub fn from_data(raw_data: &[u8]) -> Result<Blob> {
+        Ok(Blob { data: Vec::from(raw_data)})
+    }
 }
 
 impl Serializable for Blob {
-    fn serialize(&self) -> &[u8] {
-        self.data.as_slice()
+    fn serialize(&self) -> Vec<u8> {
+        let mut serialized_data = Vec::from(format!("blob {}\x00", self.data.len()).as_bytes());
+        serialized_data.extend(&self.data);
+        return serialized_data
     }
-    fn get_name(&self) -> String { String::from("blob") }
 }
 
 fn hash_data(data: &[u8]) -> [u8;20] {
@@ -84,10 +84,9 @@ mod tests {
         let tempdir = setup().unwrap();
         let data = vec!(1,2,3);
         let blob = Blob::from_data(data.as_slice()).unwrap();
+        let serialized = blob.serialize();
         save_object(tempdir.path(), &blob).unwrap();
-        let mut expected = Vec::from(format!("{} {}\x00", blob.get_name(), data.len()));
-        expected.extend_from_slice(&data);
-        assert_stored_in_path(expected.as_slice(), &generate_object_path(&data).unwrap(), tempdir.path());
+        assert_stored_in_path(serialized.as_slice(), &generate_object_path(serialized.as_slice()).unwrap(), tempdir.path());
     }
 
 /*    #[test]
