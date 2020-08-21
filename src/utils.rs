@@ -40,8 +40,8 @@ impl Blob {
         Ok(Blob { data: std::fs::read(path)? })
     }
 
-    pub fn from_data(raw_data: &[u8]) -> Result<Blob> {
-        Ok(Blob { data: Vec::from(raw_data)})
+    pub fn from_data(raw_data: &[u8]) -> Blob {
+        Blob { data: Vec::from(raw_data)}
     }
 }
 
@@ -49,6 +49,39 @@ impl Serializable for Blob {
     fn serialize(&self) -> Vec<u8> {
         let mut serialized_data = Vec::from(format!("blob {}\x00", self.data.len()).as_bytes());
         serialized_data.extend(&self.data);
+        return serialized_data
+    }
+}
+
+struct TreeEntry {
+    mode: u32,
+    name: String,
+    data: Box<dyn Serializable>,
+}
+
+
+impl Serializable for TreeEntry {
+    fn serialize(&self) -> Vec<u8> {
+        let mut serialized_data = Vec::from(format!("{} {}\x00", self.mode, &self.name));
+        serialized_data.extend(hash_data(self.data.serialize().as_slice()).iter().cloned());
+        return serialized_data;
+    }
+}
+
+pub struct Tree {
+    entries: Vec<TreeEntry>
+}
+
+impl Serializable for Tree {
+    fn serialize(&self) -> Vec<u8> {
+        let mut serialized_entries = Vec::new();
+        for entry in &self.entries {
+            serialized_entries.append(entry.serialize().as_mut())
+        }
+
+        let mut serialized_data = Vec::from(format!("tree {}\x00", serialized_entries.len()));
+        serialized_data.append(serialized_entries.as_mut());
+
         return serialized_data
     }
 }
@@ -83,10 +116,34 @@ mod tests {
     fn test_save_blob() {
         let tempdir = setup().unwrap();
         let data = vec!(1,2,3);
-        let blob = Blob::from_data(data.as_slice()).unwrap();
+        let blob = Blob::from_data(data.as_slice());
         let serialized = blob.serialize();
         save_object(tempdir.path(), &blob).unwrap();
         assert_stored_in_path(serialized.as_slice(), &generate_object_path(serialized.as_slice()).unwrap(), tempdir.path());
+    }
+
+    #[test]
+    fn test_tree_serialization() {
+        let blob1 = Blob::from_data(b"123");
+        let blob2 = Blob::from_data(b"second");
+
+        let mut serialized_blobs = Vec::new();
+        serialized_blobs.extend_from_slice(b"4445 Blob1\x00");
+        serialized_blobs.extend_from_slice(&hash_data(blob1.serialize().as_slice()));
+        serialized_blobs.extend_from_slice(b"12 second\x00");
+        serialized_blobs.extend_from_slice(&hash_data(blob2.serialize().as_slice()));
+
+        let mut expected = Vec::from(format!("tree {}\x00", serialized_blobs.len()));
+        expected.append(serialized_blobs.as_mut());
+
+        let tree = Tree {
+            entries: vec!(
+                TreeEntry{mode: 4445, name: String::from("Blob1"), data: Box::new(blob1)},
+                TreeEntry{mode: 12, name: String::from("second"), data: Box::new(blob2)}
+            )
+        };
+
+        assert_eq!(expected, tree.serialize());
     }
 
 /*    #[test]
